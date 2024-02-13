@@ -1,5 +1,51 @@
 # @effect/schema
 
+## 0.62.6
+
+### Patch Changes
+
+- [#2121](https://github.com/Effect-TS/effect/pull/2121) [`aef2b8b`](https://github.com/Effect-TS/effect/commit/aef2b8bb636ada07224dc9cf491bebe622c1aeda) Thanks [@gcanti](https://github.com/gcanti)! - Use the `identity` function in the transformation defining a schema class
+
+  This allows for the encoding of structs that have getters.
+
+  For example, this will no longer throw an error:
+
+  ```ts
+  import * as S from "@effect/schema/Schema";
+
+  class C extends S.Class<C>()({
+    n: S.NumberFromString,
+  }) {
+    get b() {
+      return 1;
+    }
+  }
+  class D extends S.Class<D>()({
+    n: S.NumberFromString,
+    b: S.number,
+  }) {}
+
+  console.log(S.encodeSync(D)(new C({ n: 1 })));
+  // Output: { b: 1, n: '1' }
+  ```
+
+- [#2124](https://github.com/Effect-TS/effect/pull/2124) [`7eecb1c`](https://github.com/Effect-TS/effect/commit/7eecb1c6cebe36550df3cca85a46867adbcaa2ca) Thanks [@gcanti](https://github.com/gcanti)! - ParseResult: add missing `decode` / `encode` exports
+
+- [#2113](https://github.com/Effect-TS/effect/pull/2113) [`855ff0b`](https://github.com/Effect-TS/effect/commit/855ff0b043ee93c59b13dd9cfb71e32b089bd622) Thanks [@tim-smart](https://github.com/tim-smart)! - disable instanceof check for encoding schema classes
+
+  This allows for the encoding of structs that have the same shape as the class.
+
+  For example, this will no longer throw an error:
+
+  ```ts
+  class User extends Schema.Class<User>()({ name: Schema.string }) {}
+
+  Schema.encodeSync(User)({ name: "John" });
+  ```
+
+- Updated dependencies [[`b881365`](https://github.com/Effect-TS/effect/commit/b8813650355322ea2fc1fbaa4f846bd87a7a05f3)]:
+  - effect@2.3.5
+
 ## 0.62.5
 
 ### Patch Changes
