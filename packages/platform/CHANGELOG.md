@@ -1,5 +1,21 @@
 # @effect/platform
 
+## 0.61.6
+
+### Patch Changes
+
+- [#3436](https://github.com/Effect-TS/effect/pull/3436) [`d829b57`](https://github.com/Effect-TS/effect/commit/d829b576357f2e3b203ab7e107a1492de903a106) Thanks @tim-smart! - remove host from HttpServerRequest url's
+
+- Updated dependencies [[`99ad841`](https://github.com/Effect-TS/effect/commit/99ad8415293a82d08bd7043c563b29e2b468ca74), [`fd4b2f6`](https://github.com/Effect-TS/effect/commit/fd4b2f6516b325740dde615f1cf0229edf13ca0c)]:
+  - @effect/schema@0.70.3
+  - effect@3.6.2
+
+## 0.61.5
+
+### Patch Changes
+
+- [#3409](https://github.com/Effect-TS/effect/pull/3409) [`056b710`](https://github.com/Effect-TS/effect/commit/056b7108978e70612176c23991916f678d947f38) Thanks @sukovanej! - Add `HttpClient.layerTest`.
+
 ## 0.61.4
 
 ### Patch Changes

@@ -1,5 +1,45 @@
 # @effect/platform-node
 
+## 0.56.7
+
+### Patch Changes
+
+- Updated dependencies [[`d829b57`](https://github.com/Effect-TS/effect/commit/d829b576357f2e3b203ab7e107a1492de903a106), [`fd4b2f6`](https://github.com/Effect-TS/effect/commit/fd4b2f6516b325740dde615f1cf0229edf13ca0c)]:
+  - @effect/platform@0.61.6
+  - effect@3.6.2
+  - @effect/platform-node-shared@0.11.6
+
+## 0.56.6
+
+### Patch Changes
+
+- [#3428](https://github.com/Effect-TS/effect/pull/3428) [`76b0496`](https://github.com/Effect-TS/effect/commit/76b0496ff9d7670e3f4c07ae924d30ed7f613cee) Thanks @tim-smart! - fix for missing global undici dispatcher
+
+## 0.56.5
+
+### Patch Changes
+
+- [#3409](https://github.com/Effect-TS/effect/pull/3409) [`056b710`](https://github.com/Effect-TS/effect/commit/056b7108978e70612176c23991916f678d947f38) Thanks @sukovanej! - Add `NodeHttpServer.layerTest`.
+
+  ```ts
+  import { HttpClientRequest, HttpRouter, HttpServer } from "@effect/platform";
+  import { NodeHttpServer } from "@effect/platform-node";
+  import { expect, it } from "@effect/vitest";
+  import { Effect } from "effect";
+
+  it.scoped("test", () =>
+    Effect.gen(function* () {
+      yield* HttpServer.serveEffect(HttpRouter.empty);
+      const response = yield* HttpClientRequest.get("/");
+      expect(response.status, 404);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+  ```
+
+- Updated dependencies [[`056b710`](https://github.com/Effect-TS/effect/commit/056b7108978e70612176c23991916f678d947f38)]:
+  - @effect/platform@0.61.5
+  - @effect/platform-node-shared@0.11.5
+
 ## 0.56.4
 
 ### Patch Changes
