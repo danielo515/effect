@@ -2568,13 +2568,31 @@ export const optionalWith: {
  */
 export declare namespace Struct {
   /**
+   * Useful for creating a type that can be used to add custom constraints to the fields of a struct.
+   *
+   * ```ts
+   * import { Schema } from "effect"
+   *
+   * const f = <Fields extends Record<"a" | "b", Schema.Struct.Field>>(
+   *   schema: Schema.Struct<Fields>
+   * ) => {
+   *   return schema.omit("a")
+   * }
+   *
+   * //      ┌─── Schema.Struct<{ b: typeof Schema.Number; }>
+   * //      ▼
+   * const result = f(Schema.Struct({ a: Schema.String, b: Schema.Number }))
+   * ```
+   * @since 3.13.11
+   */
+  export type Field =
+    | Schema.All
+    | PropertySignature.All
+
+  /**
    * @since 3.10.0
    */
-  export type Fields = {
-    readonly [x: PropertyKey]:
-      | Schema.All
-      | PropertySignature.All
-  }
+  export type Fields = { readonly [x: PropertyKey]: Field }
 
   type OptionalEncodedPropertySignature =
     | PropertySignature<PropertySignature.Token, any, PropertyKey, "?:", any, boolean, unknown>
@@ -2660,30 +2678,30 @@ export declare namespace IndexSignature {
    */
   export type NonEmptyRecords = array_.NonEmptyReadonlyArray<Record>
 
+  type MergeTuple<T extends ReadonlyArray<unknown>> = T extends readonly [infer Head, ...infer Tail] ?
+    Head & MergeTuple<Tail>
+    : {}
+
   /**
    * @since 3.10.0
    */
-  export type Type<
-    Records extends IndexSignature.Records
-  > = Types.UnionToIntersection<
+  export type Type<Records extends IndexSignature.Records> = MergeTuple<
     {
-      [K in keyof Records]: {
+      readonly [K in keyof Records]: {
         readonly [P in Schema.Type<Records[K]["key"]>]: Schema.Type<Records[K]["value"]>
       }
-    }[number]
+    }
   >
 
   /**
    * @since 3.10.0
    */
-  export type Encoded<
-    Records extends IndexSignature.Records
-  > = Types.UnionToIntersection<
+  export type Encoded<Records extends IndexSignature.Records> = MergeTuple<
     {
-      [K in keyof Records]: {
+      readonly [K in keyof Records]: {
         readonly [P in Schema.Encoded<Records[K]["key"]>]: Schema.Encoded<Records[K]["value"]>
       }
-    }[number]
+    }
   >
 
   /**
@@ -2736,7 +2754,7 @@ export interface TypeLiteral<
     | IndexSignature.Context<Records>
   >
 {
-  readonly fields: { readonly [K in keyof Fields]: Fields[K] }
+  readonly fields: Readonly<Fields>
   readonly records: Readonly<Records>
   annotations(
     annotations: Annotations.Schema<Simplify<TypeLiteral.Type<Fields, Records>>>
@@ -2846,14 +2864,11 @@ const lazilyMergeDefaults = (
   return out
 }
 
-const makeTypeLiteralClass = <
-  Fields extends Struct.Fields,
-  const Records extends IndexSignature.Records
->(
+function makeTypeLiteralClass<Fields extends Struct.Fields, const Records extends IndexSignature.Records>(
   fields: Fields,
   records: Records,
   ast: AST.AST = getDefaultTypeLiteralAST(fields, records)
-): TypeLiteral<Fields, Records> => {
+): TypeLiteral<Fields, Records> {
   return class TypeLiteralClass extends make<
     Simplify<TypeLiteral.Type<Fields, Records>>,
     Simplify<TypeLiteral.Encoded<Fields, Records>>,
@@ -2894,7 +2909,22 @@ const makeTypeLiteralClass = <
  * @category api interface
  * @since 3.10.0
  */
-export interface Struct<Fields extends Struct.Fields> extends TypeLiteral<Fields, []> {
+export interface Struct<Fields extends Struct.Fields> extends
+  AnnotableClass<
+    Struct<Fields>,
+    Simplify<Struct.Type<Fields>>,
+    Simplify<Struct.Encoded<Fields>>,
+    Struct.Context<Fields>
+  >
+{
+  readonly fields: Readonly<Fields>
+  readonly records: readonly []
+  make(
+    props: RequiredKeys<Struct.Constructor<Fields>> extends never ? void | Simplify<Struct.Constructor<Fields>>
+      : Simplify<Struct.Constructor<Fields>>,
+    options?: MakeOptions
+  ): Simplify<Struct.Type<Fields>>
+
   annotations(annotations: Annotations.Schema<Simplify<Struct.Type<Fields>>>): Struct<Fields>
   pick<Keys extends ReadonlyArray<keyof Fields>>(...keys: Keys): Struct<Simplify<Pick<Fields, Keys[number]>>>
   omit<Keys extends ReadonlyArray<keyof Fields>>(...keys: Keys): Struct<Simplify<Omit<Fields, Keys[number]>>>
@@ -2927,8 +2957,6 @@ export interface tag<Tag extends AST.LiteralValue> extends PropertySignature<":"
  * A tag is a literal value that is used to distinguish between different types of objects.
  * The tag is optional when using the `make` method.
  *
- * @see {@link TaggedStruct}
- *
  * @example
  * ```ts
  * import * as assert from "node:assert"
@@ -2942,6 +2970,8 @@ export interface tag<Tag extends AST.LiteralValue> extends PropertySignature<":"
  *
  * assert.deepStrictEqual(User.make({ name: "John", age: 44 }), { _tag: "User", name: "John", age: 44 })
  * ```
+ *
+ * @see {@link TaggedStruct}
  *
  * @since 3.10.0
  */
@@ -2986,29 +3016,43 @@ export const TaggedStruct = <Tag extends AST.LiteralValue, Fields extends Struct
  * @category api interface
  * @since 3.10.0
  */
-export interface Record$<K extends Schema.All, V extends Schema.All> extends TypeLiteral<{}, [{ key: K; value: V }]> {
+export interface Record$<K extends Schema.All, V extends Schema.All> extends
+  AnnotableClass<
+    Record$<K, V>,
+    { readonly [P in Schema.Type<K>]: Schema.Type<V> },
+    { readonly [P in Schema.Encoded<K>]: Schema.Encoded<V> },
+    | Schema.Context<K>
+    | Schema.Context<V>
+  >
+{
+  readonly fields: {}
+  readonly records: readonly [{ readonly key: K; readonly value: V }]
   readonly key: K
   readonly value: V
-  annotations(
-    annotations: Annotations.Schema<Simplify<TypeLiteral.Type<{}, [{ key: K; value: V }]>>>
-  ): Record$<K, V>
+  make(
+    props: void | { readonly [P in Schema.Type<K>]: Schema.Type<V> },
+    options?: MakeOptions
+  ): { readonly [P in Schema.Type<K>]: Schema.Type<V> }
+  annotations(annotations: Annotations.Schema<{ readonly [P in Schema.Type<K>]: Schema.Type<V> }>): Record$<K, V>
 }
 
-const makeRecordClass = <K extends Schema.All, V extends Schema.All>(
+function makeRecordClass<K extends Schema.All, V extends Schema.All>(
   key: K,
   value: V,
   ast?: AST.AST
-): Record$<K, V> => (class RecordClass extends makeTypeLiteralClass({}, [{ key, value }], ast) {
-  static override annotations(
-    annotations: Annotations.Schema<Simplify<TypeLiteral.Type<{}, [{ key: K; value: V }]>>>
-  ) {
-    return makeRecordClass(key, value, mergeSchemaAnnotations(this.ast, annotations))
+): Record$<K, V> {
+  return class RecordClass extends makeTypeLiteralClass({}, [{ key, value }], ast) {
+    static override annotations(
+      annotations: Annotations.Schema<{ readonly [P in Schema.Type<K>]: Schema.Type<V> }>
+    ): Record$<K, V> {
+      return makeRecordClass(key, value, mergeSchemaAnnotations(this.ast, annotations))
+    }
+
+    static key = key
+
+    static value = value
   }
-
-  static key = key
-
-  static value = value
-})
+}
 
 /**
  * @category constructors
@@ -9058,7 +9102,8 @@ const makeClass = <Fields extends Struct.Fields>(
             .join(", ")
         } })`
       },
-      configurable: true
+      configurable: true,
+      writable: true
     })
   }
   return klass
@@ -10019,6 +10064,7 @@ export function SortedSet<Value extends Schema.Any>(
  * Uses `!!val` to coerce the value to a `boolean`.
  *
  * @see https://developer.mozilla.org/docs/Glossary/Truthy
+ *
  * @category boolean constructors
  * @since 3.10.0
  */
@@ -10703,8 +10749,8 @@ const go = (ast: AST.AST, path: ReadonlyArray<PropertyKey>): Equivalence.Equival
         let bStringKeys: Array<string> | undefined
         for (let i = 0; i < indexSignatures.length; i++) {
           const is = ast.indexSignatures[i]
-          const base = AST.getParameterBase(is.parameter)
-          const isSymbol = AST.isSymbolKeyword(base)
+          const encodedParameter = AST.getEncodedParameter(is.parameter)
+          const isSymbol = AST.isSymbolKeyword(encodedParameter)
           if (isSymbol) {
             bSymbolKeys = bSymbolKeys || Object.getOwnPropertySymbols(b)
             if (aSymbolKeys.length !== bSymbolKeys.length) {
