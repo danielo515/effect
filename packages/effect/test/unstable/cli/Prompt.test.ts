@@ -484,6 +484,71 @@ describe("Prompt.file", () => {
       assert.isFalse(narrowedFrame?.includes("basket.txt"))
       assert.isTrue(expandedFrame?.includes("basket.txt"))
     }).pipe(Effect.provide(FilePromptLayer)))
+
+  const FilterPromptLayer = Layer.mergeAll(
+    ConsoleLayer,
+    FileSystem.layerNoop({
+      exists: () => Effect.succeed(true),
+      readDirectory: (directory) =>
+        Effect.succeed(
+          directory === "/workspace"
+            ? ["config.xml", "notes.txt", "docs"]
+            : []
+        ),
+      stat: (path) =>
+        Effect.succeed(
+          (path.endsWith(".xml") || path.endsWith(".txt")
+            ? ({ type: "File" })
+            : ({ type: "Directory" })) as any
+        )
+    }),
+    PathLayer,
+    TerminalLayer
+  )
+
+  it.effect("filter receives the resolved path and type of each entry", () =>
+    Effect.gen(function*() {
+      const seen: Array<Prompt.FileFilterInfo> = []
+
+      const prompt = Prompt.file({
+        message: "Pick file",
+        startingPath: "/workspace",
+        // Keep directories navigable while only allowing `.xml` files to be
+        // selected.
+        filter: (entry) => {
+          seen.push(entry)
+          return entry.type === "Directory" || entry.name.endsWith(".xml")
+        }
+      })
+
+      yield* MockTerminal.inputText("config")
+      yield* MockTerminal.inputKey("enter")
+
+      const result = yield* Prompt.run(prompt)
+      assert.strictEqual(result, "/workspace/config.xml")
+
+      // The filter receives an absolute path and type for every entry,
+      // including the synthetic ".." parent directory.
+      const parent = seen.find((entry) => entry.name === "..")
+      const xml = seen.find((entry) => entry.name === "config.xml")
+      const dir = seen.find((entry) => entry.name === "docs")
+      const txt = seen.find((entry) => entry.name === "notes.txt")
+
+      assert.deepStrictEqual(parent, { name: "..", path: "/", type: "Directory" })
+      assert.deepStrictEqual(xml, { name: "config.xml", path: "/workspace/config.xml", type: "File" })
+      assert.deepStrictEqual(dir, { name: "docs", path: "/workspace/docs", type: "Directory" })
+      assert.deepStrictEqual(txt, { name: "notes.txt", path: "/workspace/notes.txt", type: "File" })
+
+      const output = yield* TestConsole.logLines
+      const frames = toFrames(output)
+      const frame = findFrame(frames, "config.xml")
+
+      assert.isTrue(frame !== undefined)
+      assert.isTrue(frame?.includes(".."))
+      assert.isTrue(frame?.includes("docs"))
+      assert.isTrue(frame?.includes("config.xml"))
+      assert.isFalse(frame?.includes("notes.txt"))
+    }).pipe(Effect.provide(FilterPromptLayer)))
 })
 
 describe("Prompt.multiSelect", () => {

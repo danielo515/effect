@@ -337,6 +337,39 @@ export interface ListOptions extends TextOptions {
 }
 
 /**
+ * The context passed to a {@link FileOptions} `filter` for each entry displayed
+ * by a file-system selection prompt.
+ *
+ * **Details**
+ *
+ * In addition to the entry `name`, the filter receives the fully resolved
+ * absolute `path` of the entry as well as its `type` (e.g. `"File"` or
+ * `"Directory"`). This makes it possible to filter based on the location of an
+ * entry within the file system and to distinguish files from directories
+ * without having to `stat` the entry manually. The synthetic `".."`
+ * parent-directory entry is reported with a `type` of `"Directory"`, which
+ * allows a filter to keep directory traversal available while still restricting
+ * which files can be selected.
+ *
+ * @category models
+ * @since 4.0.0
+ */
+export interface FileFilterInfo {
+  /**
+   * The name of the entry (its basename), for example `"config.xml"` or `".."`.
+   */
+  readonly name: string
+  /**
+   * The fully resolved absolute path of the entry.
+   */
+  readonly path: string
+  /**
+   * The type of the entry, as reported by `FileSystem.stat`.
+   */
+  readonly type: FileSystem.File.Type
+}
+
+/**
  * Options for a file-system selection prompt.
  *
  * **Details**
@@ -370,10 +403,29 @@ export interface FileOptions {
    */
   readonly maxPerPage?: number
   /**
-   * A predicate or effect that keeps a file in the prompt when it returns
-   * `true`, defaulting to returning all files.
+   * A predicate or effect that keeps an entry in the prompt when it returns
+   * `true`, defaulting to keeping all entries.
+   *
+   * **Details**
+   *
+   * The predicate receives a {@link FileFilterInfo} describing the entry, which
+   * includes its `name`, fully resolved absolute `path`, and `type`. This
+   * provides enough context to filter based on the entry's location and to
+   * distinguish files from directories — for example, keeping directories
+   * navigable while only allowing files with a given extension to be selected.
+   *
+   * **Example** (Selecting an XML file while keeping directories navigable)
+   *
+   * ```ts
+   * import { Prompt } from "effect/unstable/cli"
+   *
+   * const xmlFile = Prompt.file({
+   *   message: "Please select one XML file",
+   *   filter: (entry) => entry.type === "Directory" || entry.name.endsWith(".xml")
+   * })
+   * ```
    */
-  readonly filter?: (file: string) => boolean | Effect.Effect<boolean, never, Environment>
+  readonly filter?: (file: FileFilterInfo) => boolean | Effect.Effect<boolean, never, Environment>
 }
 
 /**
@@ -867,7 +919,7 @@ export const file = (options: FileOptions = {}): Prompt<string> => {
     startingPath: Option.fromUndefinedOr(options.startingPath),
     default: Option.fromUndefinedOr(options.default),
     maxPerPage: options.maxPerPage ?? 10,
-    filter: options.filter ?? (() => Effect.succeed(true))
+    filter: Option.fromUndefinedOr(options.filter)
   }
   const initialState: Effect.Effect<
     FileState,
@@ -2067,9 +2119,12 @@ class Meridiem extends DatePart {
   }
 }
 
-interface FileOptionsReq extends Required<Omit<FileOptions, "startingPath" | "default">> {
+interface FileOptionsReq extends Required<Omit<FileOptions, "startingPath" | "default" | "filter">> {
   readonly startingPath: Option.Option<string>
   readonly default: Option.Option<string>
+  readonly filter: Option.Option<
+    (file: FileFilterInfo) => boolean | Effect.Effect<boolean, never, Environment>
+  >
 }
 
 interface FileState {
@@ -2124,18 +2179,25 @@ const getFileList = Effect.fnUntraced(function*(directory: string, options: File
     // to be filtered out if the user so desires
     Effect.map((files) => ["..", ...files])
   )
+  // The entry `type` is only needed when the prompt restricts selection to
+  // directories or when a user-defined filter is present, so avoid statting
+  // every entry otherwise.
+  const needsStat = options.type === "directory" || Option.isSome(options.filter)
   return yield* Effect.filter(files, (file) => {
-    const result = options.filter(file)
-    const userDefinedFilter = Effect.isEffect(result)
-      ? result
-      : Effect.succeed(result)
-    const directoryFilter = options.type === "directory"
-      ? Effect.map(
-        Effect.orDie(fs.stat(path.join(directory, file))),
-        (info) => info.type === "Directory"
-      )
-      : Effect.succeed(true)
-    return Effect.zipWith(userDefinedFilter, directoryFilter, (a, b) => a && b)
+    if (!needsStat) {
+      return Effect.succeed(true)
+    }
+    const resolvedPath = path.resolve(directory, file)
+    return Effect.flatMap(Effect.orDie(fs.stat(resolvedPath)), (info) => {
+      if (options.type === "directory" && info.type !== "Directory") {
+        return Effect.succeed(false)
+      }
+      if (Option.isNone(options.filter)) {
+        return Effect.succeed(true)
+      }
+      const result = options.filter.value({ name: file, path: resolvedPath, type: info.type })
+      return Effect.isEffect(result) ? result : Effect.succeed(result)
+    })
   }, { concurrency: files.length })
 })
 
